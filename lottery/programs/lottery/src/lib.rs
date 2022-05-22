@@ -16,11 +16,16 @@ pub mod lottery {
         Ok(())
     }
 
-    pub fn buy_ticket(ctx: Context<Submit>) -> Result<()> {
+    pub fn buy_ticket(ctx: Context<Join>) -> Result<()> {
         
         // Deserialise lottery account
-        let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;          
-        let player: &mut Signer = &mut ctx.accounts.player;                 
+        let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;
+        
+        if lottery.players_amount == lottery.players_maximum {
+            return Err(SErrors::LobbyIsFull.into());
+        }
+
+        // let player: &mut Signer = &mut ctx.accounts.player;                 
 
         // Transfer lamports to the lottery account
         // let ix = anchor_lang::solana_program::system_instruction::transfer(
@@ -80,11 +85,11 @@ pub mod lottery {
     }
 
 
-    pub fn leave(ctx: Context<Payout>) -> Result<()> {
+    pub fn leave(ctx: Context<Leave>) -> Result<()> {
         let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;
-        if lottery.winner != nil {
-            Err(SErrors::GameFinished.into())
-        }
+        // if lottery.winner == None {
+        //     return Err(SErrors::GameFinished.into());
+        // }
 
         let ticket: &mut Account<Ticket> =  &mut ctx.accounts.ticket;        
 
@@ -98,15 +103,16 @@ pub mod lottery {
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
-    #[account(init, payer = admin, space = 8 + 180, constraint = lottery.lamports == *lottery.players_maximum*2)]
+pub struct Initialize<'info> {
+    #[account(init, payer = admin, space = 8 + 180)]
+    // , constraint = lottery.to_account_info().lamports == *lottery.players_maximum*2
     pub lottery: Account<'info, Lottery>,
     #[account(mut)]
     pub admin: Signer<'info>,    
     pub system_program: Program<'info, System>,
 }
 
-#[derive(Acoounts)]
+#[derive(Accounts)]
 pub struct Join<'info> {
     #[account(init, 
         seeds = [
@@ -118,9 +124,12 @@ pub struct Join<'info> {
         payer = player, 
         space=80
     )]
-    pub lottery: Account<'info, Lottery>
+    pub ticket: Account<'info, Ticket>,        
+    #[account(mut)]                            
+    pub lottery: Account<'info, Lottery>,
     #[account(mut)]                                 
     pub player: Signer<'info>,
+    pub system_program: Program<'info, System>,    
 }
 
 #[derive(Accounts)]
@@ -135,7 +144,7 @@ pub struct Payout<'info> {
     #[account(mut, 
         constraint = 
         ticket.submitter == *winner.key && 
-        ticket.idx == lottery.winner_index &&
+        ticket.idx == lottery.winner_index
     )]       
     pub lottery: Account<'info, Lottery>,          // To assert winner and withdraw lamports
     #[account(mut)]       
@@ -174,10 +183,11 @@ pub struct Lottery {
 pub struct Ticket {    
     pub submitter: Pubkey,    
     pub idx: u32,
-    pub is_active: bool
+    pub is_active: bool,
 }
 
 #[error_code]
 pub enum SErrors {
     GameFinished,
+    LobbyIsFull,
 }
