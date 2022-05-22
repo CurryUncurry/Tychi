@@ -1,5 +1,6 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
+import { expect } from "chai";
 import { Lottery } from "../target/types/lottery";
 const { SystemProgram } = anchor.web3;
 
@@ -54,11 +55,51 @@ describe("lottery", () => {
       systemProgram: SystemProgram.programId
     })
     .signers([lottery, lottery_admin])
-    .rpc()
-  });
-  // it("Player 1 joins the game", async () => {
+    .rpc();
+    let lotteryState = await program.account.lottery.fetch(lottery.publicKey);
 
-  // });
+    expect(lotteryState.playersAmount).to.equal(0);
+
+    expect(lotteryState.authority.toString()).to.equal(
+      lottery_admin.publicKey.toString()
+    );
+
+    expect(lotteryState.playersMaximum).to.equal(3);
+
+  });
+
+  it("Player 1 joins the game", async () => {
+
+    let idx: number = (await program.account.lottery.fetch(lottery.publicKey))
+      .playersAmount;
+    const buf = Buffer.alloc(4);
+    buf.writeUIntBE(idx, 0, 4);
+    const [ticket, bump] = await anchor.web3.PublicKey.findProgramAddress(
+      [buf, lottery.publicKey.toBytes()],
+      program.programId
+    );
+    await program.methods
+    .join()
+    .accounts({
+      lottery: lottery.publicKey,
+      player: player1.publicKey,
+      ticket,
+      systemProgram: SystemProgram.programId
+    })
+    .signers([player1])
+    .rpc();
+
+    let lotteryState = await program.account.lottery.fetch(lottery.publicKey);
+    expect(lotteryState.playersAmount).to.equal(idx + 1);
+
+    let ticketState = await program.account.ticket.fetch(ticket);
+    expect(ticketState.submitter.toString()).to.equal(
+      player1.publicKey.toString()
+    );
+    expect(ticketState.isActive).to.be.true;
+  });
+
+  
   // it("Player 2 and 3 joins the game", async () => {});
   // it("Player 3 leaves the game", async () => {});
   // it("Oracle picks winner", async () => {});

@@ -16,7 +16,7 @@ pub mod lottery {
         Ok(())
     }
 
-    pub fn buy_ticket(ctx: Context<Join>) -> Result<()> {
+    pub fn join(ctx: Context<Join>) -> Result<()> {
         
         // Deserialise lottery account
         let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;
