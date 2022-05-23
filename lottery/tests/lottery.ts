@@ -1,6 +1,6 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
-import { expect } from "chai";
+import { assert, expect } from "chai";
 import { Lottery } from "../target/types/lottery";
 const { SystemProgram } = anchor.web3;
 
@@ -14,6 +14,7 @@ describe("lottery", () => {
   const player1 = anchor.web3.Keypair.generate();
   const player2 = anchor.web3.Keypair.generate();
   const player3 = anchor.web3.Keypair.generate();
+  const player4 = anchor.web3.Keypair.generate();
   const oracle = anchor.web3.Keypair.generate();
 
   const program = anchor.workspace.Lottery as Program<Lottery>;
@@ -40,6 +41,12 @@ describe("lottery", () => {
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
         player3.publicKey,
+        LAMPORTS_PER_SOL
+      )
+    );
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(
+        player4.publicKey,
         LAMPORTS_PER_SOL
       )
     );
@@ -152,6 +159,34 @@ describe("lottery", () => {
       player3.publicKey.toString()
     );
     expect(ticket3State.isActive).to.be.true;
+  });
+  it("Player 4 can't join", async () => {
+    let idx: number = (await program.account.lottery.fetch(lottery.publicKey))
+      .playersAmount;
+    const buf = Buffer.alloc(4);
+    buf.writeUIntBE(idx, 0, 4);
+    const [ticket] = await anchor.web3.PublicKey.findProgramAddress(
+      [buf, lottery.publicKey.toBytes()],
+      program.programId
+    );
+    try {
+      await program.methods
+        .join()
+        .accounts({
+          lottery: lottery.publicKey,
+          player: player4.publicKey,
+          ticket,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([player4])
+        .rpc();
+        assert.fail();
+    } catch(e) {
+      expect(e.message).to.be.equal("6001: LobbyIsFull")
+      const lotteryState = await program.account.lottery.fetch(lottery.publicKey);
+      expect(lotteryState.playersAmount).to.equal(idx);
+      expect(lotteryState.playersAmount == lotteryState.playersMaximum).to.be.true;
+    }
   });
   // it("Player 3 leaves the game", async () => {});
   // it("Oracle picks winner", async () => {});
