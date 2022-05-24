@@ -28,6 +28,12 @@ describe("lottery", () => {
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
+        lottery.publicKey,
+        4 * LAMPORTS_PER_SOL
+      )
+    );
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(
         player1.publicKey,
         LAMPORTS_PER_SOL
       )
@@ -180,15 +186,86 @@ describe("lottery", () => {
         })
         .signers([player4])
         .rpc();
-        assert.fail();
-    } catch(e) {
-      expect(e.message).to.be.equal("6001: LobbyIsFull")
-      const lotteryState = await program.account.lottery.fetch(lottery.publicKey);
+      assert.fail();
+    } catch (e) {
+      expect(e.message).to.be.equal("6001: LobbyIsFull");
+      const lotteryState = await program.account.lottery.fetch(
+        lottery.publicKey
+      );
       expect(lotteryState.playersAmount).to.equal(idx);
-      expect(lotteryState.playersAmount == lotteryState.playersMaximum).to.be.true;
+      expect(lotteryState.playersAmount == lotteryState.playersMaximum).to.be
+        .true;
     }
   });
-  // it("Player 3 leaves the game", async () => {});
-  // it("Oracle picks winner", async () => {});
-  // it("Winner withdraws funds", async () => {});
+  it("Player 3 leaves the game", async () => {
+    const idx = 2;
+    const buf = Buffer.alloc(4);
+    buf.writeUIntBE(idx, 0, 4);
+    const [ticket] = await anchor.web3.PublicKey.findProgramAddress(
+      [buf, lottery.publicKey.toBytes()],
+      program.programId
+    );
+    await program.methods
+      .leave()
+      .accounts({
+        lottery: lottery.publicKey,
+        player: player3.publicKey,
+        ticket,
+      })
+      .signers([player3])
+      .rpc();
+
+    const lotteryState = await program.account.lottery.fetch(lottery.publicKey);
+    expect(lotteryState.playersAmount).to.equal(idx);
+    const ticketState = await program.account.ticket.fetch(ticket);
+    expect(ticketState.isActive).to.be.false;
+  });
+  it("Oracle picks winner", async () => {
+    let winnerIndex: number = 1;
+
+    // Get oracle picks winner index
+    await program.methods
+      .pickWinner(winnerIndex)
+      .accounts({
+        lottery: lottery.publicKey,
+        oracle: oracle.publicKey,
+      })
+      .signers([oracle])
+      .rpc();
+
+    // Assert that the winner index has been picked
+    let lotteryState = await program.account.lottery.fetch(lottery.publicKey);
+    expect(lotteryState.winnerIndex).to.equal(winnerIndex);
+  });
+  it("Winner withdraws funds", async () => {
+    let startBalance: number = await provider.connection.getBalance(
+      player2.publicKey
+    );
+    // Get winner idx
+    const winnerIdx: number = (
+      await program.account.lottery.fetch(lottery.publicKey)
+    ).winnerIndex;
+
+    const buf = Buffer.alloc(4);
+    buf.writeUIntBE(winnerIdx, 0, 4);
+
+    const [ticket] = await anchor.web3.PublicKey.findProgramAddress(
+      [buf, lottery.publicKey.toBytes()],
+      program.programId
+    );
+
+    // Get lottery ticket
+    await program.methods
+      .payOutWinner()
+      .accounts({
+        ticket,
+        lottery: lottery.publicKey,
+        winner: player2.publicKey,
+      })
+      .signers([])
+      .rpc();
+
+      let endBalanace = await provider.connection.getBalance(player2.publicKey);
+      expect(endBalanace).to.be.greaterThan(startBalance);
+  });
 });
