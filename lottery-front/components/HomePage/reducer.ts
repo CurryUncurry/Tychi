@@ -5,25 +5,23 @@ import idl from "../../accounts/idl.json";
 
 export enum Actions {
   SetWalletAddress,
+  SetProgram,
+  AddLottery,
 }
-
-const connection = new Connection(env.cluster);
-// @ts-ignore
-const provider = new AnchorProvider(connection, window.solana, {
-  preflightCommitment: "processed",
-});
-
-const programId = new PublicKey(idl.metadata.address);
-const program = new Program(idl as Idl, programId, provider);
 
 export const initialState = {
   walletAddress: "",
-  program,
+  lotteries: {}
 };
 
 interface IState {
   walletAddress: string,
-  program: Program<Idl>
+  program?: Program<Idl>,
+  lotteries: { [key: string] :{
+    name: string,
+    playersAmount: number,
+    playersMaximum: number,
+  }}
 }
 
 export const reducer = (
@@ -33,6 +31,14 @@ export const reducer = (
   switch (type) {
     case Actions.SetWalletAddress:
       return { ...state, walletAddress: payload };
+    case Actions.SetProgram:
+      return { ...state, program: payload };
+    case Actions.AddLottery: {
+      const { playersAmount, playersMaximum, name, publicKey } = payload
+      const { lotteries } = { ...state };
+      lotteries[publicKey] = ({ playersAmount, playersMaximum, name });
+      return { ...state, lotteries }
+    }
     default:
       throw new Error();
   }

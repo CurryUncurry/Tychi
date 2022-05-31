@@ -40,4 +40,4 @@ const init = async (maxUsers) => {
     fs.writeFileSync(`./lottery${maxUsers}.json`, JSON.stringify(lottery));
 }
 
-init(2);
+init(3);

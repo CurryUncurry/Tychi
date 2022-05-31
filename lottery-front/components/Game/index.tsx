@@ -21,7 +21,7 @@ const Game: FC<IProps & BoxProps> = ({
 }) => {
   return (
     <Box {...gameStyle} {...rest}>
-      <Box fontSize="xl">⚡️ {name}</Box>
+      <Box fontSize="xl">{name}</Box>
       <Box
         display="flex"
         flexDirection="column"

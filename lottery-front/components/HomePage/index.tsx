@@ -1,20 +1,39 @@
 import { Box, BoxProps, Button } from "@chakra-ui/react";
+import { Program, Idl, AnchorProvider } from "@project-serum/anchor";
+import { Connection, PublicKey } from "@solana/web3.js";
 import type { NextPage } from "next";
 import Head from "next/head";
 import { useEffect, useReducer } from "react";
+import { env } from "../../env/config";
 import Game from "../Game";
 import { Actions, initialState, reducer } from "./reducer";
+import idl from "../../accounts/idl.json";
+import { getRandomEmoji } from "../../helpers/randomEmoji";
 
-const HomePage: NextPage = () => {
-  const [{ walletAddress, program }, dispatch] = useReducer(reducer, initialState);
+interface IProps {
+  publicKeys: string[];
+}
+
+const HomePage: NextPage<IProps> = ({ publicKeys }) => {
+  const [{ walletAddress, program, lotteries }, dispatch] = useReducer(
+    reducer,
+    initialState
+  );
 
   useEffect(() => {
     const onLoad = async () => {
       await checkIfWalletIsConnected();
+      await setupProgram();
     };
     window.addEventListener("load", onLoad);
     return () => window.removeEventListener("load", onLoad);
   }, []);
+
+  useEffect(() => {
+    if (program) {
+      setupLotteries();
+    }
+  }, [program]);
 
   const checkIfWalletIsConnected = async () => {
     try {
@@ -34,6 +53,30 @@ const HomePage: NextPage = () => {
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const setupProgram = () => {
+    const connection = new Connection(env.cluster);
+    // @ts-ignore
+    const provider = new AnchorProvider(connection, window.solana, {
+      preflightCommitment: "processed",
+    });
+
+    const programId = new PublicKey(idl.metadata.address);
+    const program = new Program(idl as Idl, programId, provider);
+    dispatch({ type: Actions.SetProgram, payload: program });
+  };
+
+  const setupLotteries = async () => {
+    Promise.all(
+      publicKeys.map(async (publicKey) => {
+        const lottery = await program.account.lottery.fetch(publicKey);
+        dispatch({
+          type: Actions.AddLottery,
+          payload: { ...lottery, name: `${getRandomEmoji()} Lottery`, publicKey },
+        });
+      })
+    );
   };
 
   const connectWallet = async () => {
@@ -70,29 +113,17 @@ const HomePage: NextPage = () => {
             </Button>
           ) : null}
         </Box>
-        <Game
-          name="Mega Lottery"
-          amount={3}
-          maximum={15}
-          onJoin={() => console.log("joined")}
-          onLeave={() => console.log("leaved")}
-        />
-        <Game
-          buttonStatus="leave"
-          name="Mega Lottery"
-          amount={3}
-          maximum={15}
-          onJoin={() => console.log("joined")}
-          onLeave={() => console.log("leaved")}
-        />
-        <Game
-          buttonStatus="disabled"
-          name="Mega Lottery"
-          amount={3}
-          maximum={15}
-          onJoin={() => console.log("joined")}
-          onLeave={() => console.log("leaved")}
-        />
+        {Object.values(lotteries).map(
+          ({ name, playersAmount, playersMaximum }) => (
+            <Game
+              name={name}
+              amount={playersAmount}
+              maximum={playersMaximum}
+              onJoin={() => console.log("joined")}
+              onLeave={() => console.log("leaved")}
+            />
+          )
+        )}
       </main>
     </Box>
   );
