@@ -6,7 +6,8 @@ interface IProps {
   amount: number;
   maximum: number;
   name?: string;
-  onJoin: () => void;
+  publicKey: string;
+  onJoin: (pk: string) => void;
   onLeave: () => void;
 }
 
@@ -15,6 +16,7 @@ const Game: FC<IProps & BoxProps> = ({
   amount,
   name,
   maximum,
+  publicKey,
   onJoin,
   onLeave,
   ...rest
@@ -28,7 +30,7 @@ const Game: FC<IProps & BoxProps> = ({
         justifyContent="center"
         alignItems="center"
       >
-        <Button mb="1" disabled={buttonStatus == "disabled"}>
+        <Button mb="1" disabled={buttonStatus == "disabled"} onClick={() => onJoin(publicKey)}>
           {buttonStatus !== "leave" ? "Join" : "Leave"}
         </Button>
         {amount}/{maximum}

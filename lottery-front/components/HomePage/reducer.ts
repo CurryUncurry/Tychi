@@ -4,18 +4,15 @@ import { env } from "../../env/config";
 import idl from "../../accounts/idl.json";
 
 export enum Actions {
-  SetWalletAddress,
   SetProgram,
   AddLottery,
 }
 
 export const initialState = {
-  walletAddress: "",
   lotteries: {}
 };
 
 interface IState {
-  walletAddress: string,
   program?: Program<Idl>,
   lotteries: { [key: string] :{
     name: string,
@@ -29,8 +26,6 @@ export const reducer = (
   { type, payload }: { type: Actions; payload: any }
 ) => {
   switch (type) {
-    case Actions.SetWalletAddress:
-      return { ...state, walletAddress: payload };
     case Actions.SetProgram:
       return { ...state, program: payload };
     case Actions.AddLottery: {

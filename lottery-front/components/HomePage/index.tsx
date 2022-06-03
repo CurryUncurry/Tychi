@@ -1,6 +1,14 @@
-import { Box, BoxProps, Button } from "@chakra-ui/react";
-import { Program, Idl, AnchorProvider } from "@project-serum/anchor";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Box, BoxProps } from "@chakra-ui/react";
+import {
+  Program,
+  Idl,
+  AnchorProvider,
+  web3,
+  Provider,
+  getProvider,
+  setProvider,
+} from "@project-serum/anchor";
+import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import type { NextPage } from "next";
 import Head from "next/head";
 import { useEffect, useReducer } from "react";
@@ -9,20 +17,22 @@ import Game from "../Game";
 import { Actions, initialState, reducer } from "./reducer";
 import idl from "../../accounts/idl.json";
 import { getRandomEmoji } from "../../helpers/randomEmoji";
+import { useWallet } from "@solana/wallet-adapter-react";
+import {
+  WalletDisconnectButton,
+  WalletMultiButton,
+} from "@solana/wallet-adapter-react-ui";
 
 interface IProps {
   publicKeys: string[];
 }
 
 const HomePage: NextPage<IProps> = ({ publicKeys }) => {
-  const [{ walletAddress, program, lotteries }, dispatch] = useReducer(
-    reducer,
-    initialState
-  );
+  const [{ program, lotteries }, dispatch] = useReducer(reducer, initialState);
+  const wallet = useWallet();
 
   useEffect(() => {
     const onLoad = async () => {
-      await checkIfWalletIsConnected();
       await setupProgram();
     };
     window.addEventListener("load", onLoad);
@@ -35,32 +45,13 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
     }
   }, [program]);
 
-  const checkIfWalletIsConnected = async () => {
-    try {
-      // @ts-ignore
-      const { solana } = window;
-
-      if (solana) {
-        if (solana.isPhantom) {
-          const response = await solana.connect({ onlyIfTrusted: true });
-
-          dispatch({
-            type: Actions.SetWalletAddress,
-            payload: response.publicKey.toString(),
-          });
-        }
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   const setupProgram = () => {
     const connection = new Connection(env.cluster);
     // @ts-ignore
     const provider = new AnchorProvider(connection, window.solana, {
       preflightCommitment: "processed",
     });
+    setProvider(provider);
 
     const programId = new PublicKey(idl.metadata.address);
     const program = new Program(idl as Idl, programId, provider);
@@ -73,23 +64,42 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
         const lottery = await program.account.lottery.fetch(publicKey);
         dispatch({
           type: Actions.AddLottery,
-          payload: { ...lottery, name: `${getRandomEmoji()} Lottery`, publicKey },
+          payload: {
+            ...lottery,
+            name: `${getRandomEmoji()} Lottery`,
+            publicKey,
+          },
         });
       })
     );
   };
 
-  const connectWallet = async () => {
-    //@ts-ignore
-    const { solana } = window;
-
-    if (solana) {
-      const response = await solana.connect();
-      dispatch({
-        type: Actions.SetWalletAddress,
-        payload: response.publicKey.toString(),
-      });
-    }
+  const onJoin = async (lotteryPublicKey: string) => {
+    const lotteryPk = new PublicKey(lotteryPublicKey);
+    const idx: number = (await program.account.lottery.fetch(lotteryPk))
+      .playersAmount;
+    const buf = Buffer.alloc(4);
+    buf.writeUIntBE(idx, 0, 4);
+    const [ticket] = await web3.PublicKey.findProgramAddress(
+      [buf, lotteryPk.toBytes()],
+      program.programId
+    );
+    const tx = await program.transaction.join({
+      accounts: {
+        lottery: lotteryPk,
+        player: wallet.publicKey,
+        ticket,
+        systemProgram: SystemProgram.programId,
+      },
+      signers: [wallet],
+    });
+    const connection = new Connection(env.cluster);
+    tx.feePayer = wallet.publicKey;
+    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    // @ts-ignore
+    const signedTx = await wallet.signTransaction(tx);
+    const txId = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction(txId);
   };
 
   return (
@@ -103,23 +113,24 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
           <Box fontSize="5xl" fontWeight="bold">
             Lottery
           </Box>
-          {!walletAddress ? (
-            <Button
-              position="absolute"
-              right="0"
-              onClick={() => connectWallet()}
-            >
-              Connect Wallet
-            </Button>
-          ) : null}
+          <Box position="absolute" right={0}>
+            {!wallet.connected ? (
+              <WalletMultiButton />
+            ) : (
+              <WalletDisconnectButton />
+            )}
+          </Box>
         </Box>
-        {Object.values(lotteries).map(
-          ({ name, playersAmount, playersMaximum }) => (
+        {Object.entries(lotteries).map(
+          ([publicKey, { name, playersAmount, playersMaximum }]) => (
             <Game
+              mb={3}
+              buttonStatus={!wallet.connected ? "disabled" : "join"}
+              publicKey={publicKey}
               name={name}
               amount={playersAmount}
               maximum={playersMaximum}
-              onJoin={() => console.log("joined")}
+              onJoin={onJoin}
               onLeave={() => console.log("leaved")}
             />
           )
@@ -131,6 +142,7 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
 
 const headerStyle = {
   width: "100%",
+  mb: 5,
   display: "flex",
   flexDirection: "row",
   justifyContent: "center",
