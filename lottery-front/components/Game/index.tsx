@@ -1,14 +1,14 @@
-import { Box, BoxProps, Button } from "@chakra-ui/react";
+import { Box, BoxProps, Button, Spinner } from "@chakra-ui/react";
 import { FC } from "react";
 
 interface IProps {
-  buttonStatus?: "join" | "disabled" | "leave";
+  buttonStatus?: "join" | "disabled" | "leave" | "loading";
   amount: number;
   maximum: number;
   name?: string;
   publicKey: string;
   onJoin: (pk: string) => void;
-  onLeave: () => void;
+  onLeave: (pk: string) => void;
 }
 
 const Game: FC<IProps & BoxProps> = ({
@@ -21,6 +21,35 @@ const Game: FC<IProps & BoxProps> = ({
   onLeave,
   ...rest
 }) => {
+  const getButton = () => {
+    switch (buttonStatus) {
+      case "disabled":
+      case "join":
+        return (
+          <Button
+            mb="1"
+            disabled={buttonStatus == "disabled"}
+            onClick={() => onJoin(publicKey)}
+            {...buttonStyle}
+          >
+            Join
+          </Button>
+        );
+      case "leave":
+        return (
+          <Button mb="1" onClick={() => onLeave(publicKey)} {...buttonStyle}>
+            Leave
+          </Button>
+        );
+      case "loading":
+        return (
+          <Button mb="1" {...buttonStyle}>
+            <Spinner />
+          </Button>
+        );
+    }
+  };
+
   return (
     <Box {...gameStyle} {...rest}>
       <Box fontSize="xl">{name}</Box>
@@ -30,9 +59,7 @@ const Game: FC<IProps & BoxProps> = ({
         justifyContent="center"
         alignItems="center"
       >
-        <Button mb="1" disabled={buttonStatus == "disabled"} onClick={() => onJoin(publicKey)}>
-          {buttonStatus !== "leave" ? "Join" : "Leave"}
-        </Button>
+        {getButton()}
         {amount}/{maximum}
       </Box>
     </Box>
@@ -47,6 +74,10 @@ const gameStyle = {
   border: "1px solid #ADD8E6",
   borderRadius: "16px",
   width: "100%",
+};
+const buttonStyle = {
+  height: "40px",
+  width: "100px",
 };
 
 export default Game;

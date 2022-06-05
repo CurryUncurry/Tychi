@@ -4,8 +4,6 @@ import {
   Idl,
   AnchorProvider,
   web3,
-  Provider,
-  getProvider,
   setProvider,
 } from "@project-serum/anchor";
 import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
@@ -22,6 +20,7 @@ import {
   WalletDisconnectButton,
   WalletMultiButton,
 } from "@solana/wallet-adapter-react-ui";
+import { createTicket } from "../../helpers/ticketHelper";
 
 interface IProps {
   publicKeys: string[];
@@ -45,11 +44,17 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
     }
   }, [program]);
 
+  useEffect(() => {
+    if (wallet && program) {
+      checkIsJoinedToLottery();
+    }
+  }, [wallet, program]);
+
   const setupProgram = () => {
     const connection = new Connection(env.cluster);
     // @ts-ignore
     const provider = new AnchorProvider(connection, window.solana, {
-      preflightCommitment: "processed",
+      preflightCommitment: "finalized",
     });
     setProvider(provider);
 
@@ -59,7 +64,7 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
   };
 
   const setupLotteries = async () => {
-    Promise.all(
+    await Promise.all(
       publicKeys.map(async (publicKey) => {
         const lottery = await program.account.lottery.fetch(publicKey);
         dispatch({
@@ -74,32 +79,164 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
     );
   };
 
+  const checkIsJoinedToLottery = async () => {
+    await Promise.all(
+      publicKeys.map(async (publicKey) => {
+        const lotteryPk = new PublicKey(publicKey);
+        const lottery = await program.account.lottery.fetch(publicKey);
+        await Promise.all(
+          [...new Array(lottery.playersMaximum)].map(async (_e, i) => {
+            const ticket = await createTicket(i, lotteryPk, program.programId);
+            try {
+              const { isActive, submitter } =
+                await program.account.ticket.fetch(ticket);
+
+              const submitterPk = new PublicKey(submitter);
+              if (
+                isActive == true &&
+                submitterPk.toString() == wallet.publicKey!.toString()
+              ) {
+                dispatch({ type: Actions.SetJoined, payload: { publicKey } });
+              }
+            } catch (e) {}
+          })
+        );
+      })
+    );
+  };
+
   const onJoin = async (lotteryPublicKey: string) => {
     const lotteryPk = new PublicKey(lotteryPublicKey);
-    const idx: number = (await program.account.lottery.fetch(lotteryPk))
-      .playersAmount;
-    const buf = Buffer.alloc(4);
-    buf.writeUIntBE(idx, 0, 4);
-    const [ticket] = await web3.PublicKey.findProgramAddress(
-      [buf, lotteryPk.toBytes()],
-      program.programId
-    );
-    const tx = await program.transaction.join({
-      accounts: {
-        lottery: lotteryPk,
-        player: wallet.publicKey,
-        ticket,
-        systemProgram: SystemProgram.programId,
-      },
-      signers: [wallet],
-    });
-    const connection = new Connection(env.cluster);
-    tx.feePayer = wallet.publicKey;
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    // @ts-ignore
-    const signedTx = await wallet.signTransaction(tx);
-    const txId = await connection.sendRawTransaction(signedTx.serialize());
-    await connection.confirmTransaction(txId);
+    const { playersMaximum } = await program.account.lottery.fetch(lotteryPk);
+
+    const userTicket = await (
+      await Promise.all(
+        [...new Array(playersMaximum)].map(async (_e, i) => {
+          const ticket = await createTicket(i, lotteryPk, program.programId);
+          try {
+            const { isActive } = await program.account.ticket.fetch(ticket);
+            if (!isActive) {
+              return ticket;
+            }
+            return false;
+          } catch (e) {
+            return ticket;
+          }
+        })
+      )
+    ).filter((e) => e)[0];
+    console.log(userTicket.toString());
+    try {
+      dispatch({
+        type: Actions.UpdateLoading,
+        payload: { publicKey: lotteryPublicKey, isLoading: true },
+      });
+      const tx = await program.transaction.join({
+        accounts: {
+          lottery: lotteryPk,
+          player: wallet.publicKey,
+          ticket: userTicket,
+          systemProgram: SystemProgram.programId,
+        },
+        signers: [wallet],
+      });
+      const connection = new Connection(env.cluster);
+      tx.feePayer = wallet.publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash();
+      // @ts-ignore
+      const signedTx = await wallet.signTransaction(tx);
+      const txId = await connection.sendRawTransaction(signedTx.serialize());
+
+      await connection.confirmTransaction({
+        signature: txId,
+        blockhash,
+        lastValidBlockHeight,
+      });
+      await setupLotteries();
+    } catch (e) {
+    } finally {
+      dispatch({
+        type: Actions.UpdateLoading,
+        payload: { publicKey: lotteryPublicKey, isLoading: false },
+      });
+    }
+  };
+
+  const onLeave = async (lotteryPublicKey: string) => {
+    const lotteryPk = new PublicKey(lotteryPublicKey);
+    const { playersMaximum } = await program.account.lottery.fetch(lotteryPk);
+
+    const userTicket = await (
+      await Promise.all(
+        [...new Array(playersMaximum)].map(async (_e, i) => {
+          const ticket = await createTicket(i, lotteryPk, program.programId);
+          try {
+            const { isActive, submitter } = await program.account.ticket.fetch(
+              ticket
+            );
+
+            const submitterPk = new PublicKey(submitter);
+            if (
+              isActive == true &&
+              submitterPk.toString() == wallet.publicKey!.toString()
+            ) {
+              return ticket;
+            }
+          } catch (e) {
+            return false;
+          }
+        })
+      )
+    ).filter((e) => e)[0];
+    try {
+      dispatch({
+        type: Actions.UpdateLoading,
+        payload: { publicKey: lotteryPublicKey, isLoading: true },
+      });
+      const tx = await program.transaction.leave({
+        accounts: {
+          lottery: lotteryPk,
+          player: wallet.publicKey,
+          ticket: userTicket,
+        },
+        signers: [wallet],
+      });
+      const connection = new Connection(env.cluster);
+      tx.feePayer = wallet.publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash();
+      // @ts-ignore
+      const signedTx = await wallet.signTransaction(tx);
+      const txId = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction({
+        signature: txId,
+        blockhash,
+        lastValidBlockHeight,
+      });
+      await setupLotteries();
+    } catch (e) {
+    } finally {
+      dispatch({
+        type: Actions.UpdateLoading,
+        payload: { publicKey: lotteryPublicKey, isLoading: false },
+      });
+    }
+  };
+
+  const getButtonStatus = (isConnected: boolean, key: string) => {
+    if (lotteries[key].isLoading) {
+      return "loading";
+    }
+    if (!isConnected) {
+      return "disabled";
+    }
+    if (lotteries[key].isJoined) {
+      return "leave";
+    }
+    return "join";
   };
 
   return (
@@ -122,16 +259,17 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
           </Box>
         </Box>
         {Object.entries(lotteries).map(
-          ([publicKey, { name, playersAmount, playersMaximum }]) => (
+          ([publicKey, { name, playersAmount, playersMaximum }], i) => (
             <Game
+              key={i}
               mb={3}
-              buttonStatus={!wallet.connected ? "disabled" : "join"}
+              buttonStatus={getButtonStatus(wallet.connected, publicKey)}
               publicKey={publicKey}
               name={name}
               amount={playersAmount}
               maximum={playersMaximum}
               onJoin={onJoin}
-              onLeave={() => console.log("leaved")}
+              onLeave={onLeave}
             />
           )
         )}
