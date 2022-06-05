@@ -5,7 +5,7 @@ const theme: ThemeConfig = extendTheme({
 		body: 'Rubick, sans-serif',
 		heading: 'Rubick, sans-serif'
 	},
-	initialColorMode: 'dark',
+	initialColorMode: 'white',
 	useSystemColorMode: true,
 })
 

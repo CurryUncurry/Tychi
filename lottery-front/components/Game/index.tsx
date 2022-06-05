@@ -51,30 +51,40 @@ const Game: FC<IProps & BoxProps> = ({
   };
 
   return (
-    <Box {...gameStyle} {...rest}>
-      <Box fontSize="xl">{name}</Box>
-      <Box
-        display="flex"
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-      >
-        {getButton()}
-        {amount}/{maximum}
+    <Box {...rest} {...gameWrapperStyle}>
+      <Box {...gameStyle}>
+        <Box fontSize="2xl">{name}</Box>
+        <Box
+          display="flex"
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+        >
+          {getButton()}
+          {amount}/{maximum}
+        </Box>
       </Box>
     </Box>
   );
 };
 
 const gameStyle = {
+  background: "white",
   display: "flex",
   padding: "16px",
   justifyContent: "space-between",
   alignItems: "center",
-  border: "1px solid #ADD8E6",
+  border: "3px solid #ADD8E6",
   borderRadius: "16px",
   width: "100%",
 };
+
+const gameWrapperStyle = {
+  background: '#ADD8E6',
+  borderRadius: "16px",
+  paddingBottom: "5px"
+}
+
 const buttonStyle = {
   height: "40px",
   width: "100px",
