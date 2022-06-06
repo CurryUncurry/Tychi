@@ -15,6 +15,8 @@ describe("lottery", () => {
   const player2 = anchor.web3.Keypair.generate();
   const player3 = anchor.web3.Keypair.generate();
   const player4 = anchor.web3.Keypair.generate();
+  const players = [player1, player2, player3, player4];
+
   const oracle = anchor.web3.Keypair.generate();
 
   const program = anchor.workspace.Lottery as Program<Lottery>;
@@ -34,25 +36,25 @@ describe("lottery", () => {
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
-        player1.publicKey,
+        players[0].publicKey,
         LAMPORTS_PER_SOL
       )
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
-        player2.publicKey,
+        players[1].publicKey,
         LAMPORTS_PER_SOL
       )
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
-        player3.publicKey,
+        players[2].publicKey,
         LAMPORTS_PER_SOL
       )
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
-        player4.publicKey,
+        players[3].publicKey,
         LAMPORTS_PER_SOL
       )
     );
@@ -92,11 +94,11 @@ describe("lottery", () => {
       .join()
       .accounts({
         lottery: lottery.publicKey,
-        player: player1.publicKey,
+        player: players[0].publicKey,
         ticket,
         systemProgram: SystemProgram.programId,
       })
-      .signers([player1])
+      .signers([players[0]])
       .rpc();
 
     const lotteryState = await program.account.lottery.fetch(lottery.publicKey);
@@ -104,7 +106,7 @@ describe("lottery", () => {
 
     const ticketState = await program.account.ticket.fetch(ticket);
     expect(ticketState.submitter.toString()).to.equal(
-      player1.publicKey.toString()
+      players[0].publicKey.toString()
     );
     expect(ticketState.isActive).to.be.true;
   });
@@ -122,11 +124,11 @@ describe("lottery", () => {
       .join()
       .accounts({
         lottery: lottery.publicKey,
-        player: player2.publicKey,
+        player: players[1].publicKey,
         ticket: ticket2,
         systemProgram: SystemProgram.programId,
       })
-      .signers([player2])
+      .signers([players[1]])
       .rpc();
 
     let lotteryState = await program.account.lottery.fetch(lottery.publicKey);
@@ -134,7 +136,7 @@ describe("lottery", () => {
 
     const ticket2State = await program.account.ticket.fetch(ticket2);
     expect(ticket2State.submitter.toString()).to.equal(
-      player2.publicKey.toString()
+      players[1].publicKey.toString()
     );
     expect(ticket2State.isActive).to.be.true;
 
@@ -150,11 +152,11 @@ describe("lottery", () => {
       .join()
       .accounts({
         lottery: lottery.publicKey,
-        player: player3.publicKey,
+        player: players[2].publicKey,
         ticket: ticket3,
         systemProgram: SystemProgram.programId,
       })
-      .signers([player3])
+      .signers([players[2]])
       .rpc();
 
     lotteryState = await program.account.lottery.fetch(lottery.publicKey);
@@ -162,7 +164,7 @@ describe("lottery", () => {
 
     const ticket3State = await program.account.ticket.fetch(ticket3);
     expect(ticket3State.submitter.toString()).to.equal(
-      player3.publicKey.toString()
+      players[2].publicKey.toString()
     );
     expect(ticket3State.isActive).to.be.true;
   });
@@ -180,11 +182,11 @@ describe("lottery", () => {
         .join()
         .accounts({
           lottery: lottery.publicKey,
-          player: player4.publicKey,
+          player: players[3].publicKey,
           ticket,
           systemProgram: SystemProgram.programId,
         })
-        .signers([player4])
+        .signers([players[3]])
         .rpc();
       assert.fail();
     } catch (e) {
@@ -209,10 +211,10 @@ describe("lottery", () => {
       .leave()
       .accounts({
         lottery: lottery.publicKey,
-        player: player3.publicKey,
+        player: players[2].publicKey,
         ticket,
       })
-      .signers([player3])
+      .signers([players[2]])
       .rpc();
 
     const lotteryState = await program.account.lottery.fetch(lottery.publicKey);
@@ -225,21 +227,23 @@ describe("lottery", () => {
 
     // Get oracle picks winner index
     await program.methods
-      .pickWinner(winnerIndex)
+      .pickWinner()
       .accounts({
         lottery: lottery.publicKey,
         oracle: oracle.publicKey,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .signers([oracle])
       .rpc();
 
     // Assert that the winner index has been picked
     let lotteryState = await program.account.lottery.fetch(lottery.publicKey);
-    expect(lotteryState.winnerIndex).to.equal(winnerIndex);
+    expect(lotteryState.winnerIndex).to.be.lessThanOrEqual(lotteryState.playersAmount - 1);
+    expect(lotteryState.winnerIndex).to.be.greaterThanOrEqual(0);
   });
   it("Winner withdraws funds", async () => {
     let startBalance: number = await provider.connection.getBalance(
-      player2.publicKey
+      players[1].publicKey
     );
     // Get winner idx
     const winnerIdx: number = (
@@ -260,12 +264,12 @@ describe("lottery", () => {
       .accounts({
         ticket,
         lottery: lottery.publicKey,
-        winner: player2.publicKey,
+        winner: players[winnerIdx].publicKey,
       })
       .signers([])
       .rpc();
 
-      let endBalanace = await provider.connection.getBalance(player2.publicKey);
+      let endBalanace = await provider.connection.getBalance(players[winnerIdx].publicKey);
       expect(endBalanace).to.be.greaterThan(startBalance);
   });
 });

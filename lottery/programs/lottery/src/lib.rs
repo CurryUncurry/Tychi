@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::hash::*;
 
 declare_id!("GaYLemFsWLURxRTLHhS735SdfYBuV3v2aJshrrTmvsmU");
 
@@ -58,13 +59,15 @@ pub mod lottery {
     }
 
      // Oracle picks winner index
-     pub fn pick_winner(ctx: Context<Winner>, winner: u32) -> Result<()> {
+     pub fn pick_winner(ctx: Context<Winner>) -> Result<()> {
 
         // Deserialise lottery account
         let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;
         
         // Set winning index
-        lottery.winner_index = winner;                
+        let random_number =  u64::try_from_slice(&hash(&(ctx.accounts.clock.unix_timestamp as i128 + ctx.accounts.clock.slot as i128).to_be_bytes()).to_bytes()[0..8]).unwrap();
+        let winner: u32 = (random_number % lottery.players_amount as u64) as u32;
+        lottery.winner_index = winner;
 
         Ok(())
     }
@@ -137,6 +140,7 @@ pub struct Winner<'info> {
     #[account(mut, constraint = lottery.oracle == *oracle.key)]
     pub lottery: Account<'info, Lottery>,        
     pub oracle: Signer<'info>,
+    pub clock: Sysvar<'info, Clock>,
 }
 
 #[derive(Accounts)]
@@ -147,7 +151,8 @@ pub struct Payout<'info> {
         ticket.idx == lottery.winner_index
     )]       
     pub lottery: Account<'info, Lottery>,          // To assert winner and withdraw lamports
-    #[account(mut)]       
+    #[account(mut)]
+    /// CHECK: no check
     pub winner: AccountInfo<'info>,                // Winner account
     #[account(mut, constraint = ticket.is_active == true)]                  
     pub ticket: Account<'info, Ticket>,            // Winning PDA
