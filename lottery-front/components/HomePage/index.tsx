@@ -54,7 +54,8 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
     const connection = new Connection(env.cluster);
     // @ts-ignore
     const provider = new AnchorProvider(connection, window.solana, {
-      preflightCommitment: "finalized",
+      preflightCommitment: "processed",
+      commitment: "processed"
     });
     setProvider(provider);
 
@@ -66,15 +67,17 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
   const setupLotteries = async () => {
     await Promise.all(
       publicKeys.map(async (publicKey) => {
-        const lottery = await program.account.lottery.fetch(publicKey);
-        dispatch({
-          type: Actions.AddLottery,
-          payload: {
-            ...lottery,
-            name: `${getRandomEmoji()} Lottery`,
-            publicKey,
-          },
-        });
+        try {
+          const lottery = await program.account.lottery.fetch(publicKey);
+          dispatch({
+            type: Actions.AddLottery,
+            payload: {
+              ...lottery,
+              name: `${getRandomEmoji()} Lottery`,
+              publicKey,
+            },
+          });
+        } catch (e) {}
       })
     );
   };
@@ -83,49 +86,34 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
     await Promise.all(
       publicKeys.map(async (publicKey) => {
         const lotteryPk = new PublicKey(publicKey);
-        const lottery = await program.account.lottery.fetch(publicKey);
-        await Promise.all(
-          [...new Array(lottery.playersMaximum)].map(async (_e, i) => {
-            const ticket = await createTicket(i, lotteryPk, program.programId);
-            try {
-              const { isActive, submitter } =
-                await program.account.ticket.fetch(ticket);
-
-              const submitterPk = new PublicKey(submitter);
-              if (
-                isActive == true &&
-                submitterPk.toString() == wallet.publicKey!.toString()
-              ) {
-                dispatch({ type: Actions.SetJoined, payload: { publicKey } });
-              }
-            } catch (e) {}
-          })
-        );
+        try {
+          const lottery = await program.account.lottery.fetch(publicKey);
+          await Promise.all(
+            [...new Array(lottery.playersMaximum)].map(async (_e, i) => {
+              const ticket = await createTicket(i, lotteryPk, program.programId);
+              try {
+                const { isActive, submitter } =
+                  await program.account.ticket.fetch(ticket);
+  
+                const submitterPk = new PublicKey(submitter);
+                if (
+                  isActive == true &&
+                  submitterPk.toString() == wallet.publicKey!.toString()
+                ) {
+                  dispatch({ type: Actions.SetJoined, payload: { publicKey } });
+                }
+              } catch (e) {}
+            })
+          );
+        } catch (e) {}
       })
     );
   };
 
   const onJoin = async (lotteryPublicKey: string) => {
     const lotteryPk = new PublicKey(lotteryPublicKey);
-    const { playersMaximum } = await program.account.lottery.fetch(lotteryPk);
-
-    const userTicket = await (
-      await Promise.all(
-        [...new Array(playersMaximum)].map(async (_e, i) => {
-          const ticket = await createTicket(i, lotteryPk, program.programId);
-          try {
-            const { isActive } = await program.account.ticket.fetch(ticket);
-            if (!isActive) {
-              return ticket;
-            }
-            return false;
-          } catch (e) {
-            return ticket;
-          }
-        })
-      )
-    ).filter((e) => e)[0];
-    console.log(userTicket.toString());
+    const { playersAmount } = await program.account.lottery.fetch(lotteryPk);
+    const userTicket = await createTicket(playersAmount, lotteryPk, program.programId);
     try {
       dispatch({
         type: Actions.UpdateLoading,
@@ -155,6 +143,7 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
         lastValidBlockHeight,
       });
       await setupLotteries();
+      await checkIsJoinedToLottery();
     } catch (e) {
     } finally {
       dispatch({
@@ -217,6 +206,7 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
         lastValidBlockHeight,
       });
       await setupLotteries();
+      await checkIsJoinedToLottery();
     } catch (e) {
     } finally {
       dispatch({
@@ -226,11 +216,55 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
     }
   };
 
+  const onReceive = async (lotteryPublicKey: string) => {
+    const lotteryPk = new PublicKey(lotteryPublicKey);
+    const { winnerIndex } = await program.account.lottery.fetch(lotteryPk);
+    const userTicket = await createTicket(winnerIndex, lotteryPk, program.programId)
+    try {
+      dispatch({
+        type: Actions.UpdateLoading,
+        payload: { publicKey: lotteryPublicKey, isLoading: true },
+      });
+      const tx = await program.transaction.payOutWinner({
+        accounts: {
+          lottery: lotteryPk,
+          ticket: userTicket,
+          winner: wallet.publicKey
+        },
+        signers: [],
+      });
+      const connection = new Connection(env.cluster);
+      tx.feePayer = wallet.publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash();
+      // @ts-ignore
+      const signedTx = await wallet.signTransaction(tx);
+      const txId = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction({
+        signature: txId,
+        blockhash,
+        lastValidBlockHeight,
+      });
+      await setupLotteries();
+    } catch (e) {
+      console.log(e)
+    } finally {
+      dispatch({
+        type: Actions.UpdateLoading,
+        payload: { publicKey: lotteryPublicKey, isLoading: false },
+      });
+    }
+  }
+
   const getButtonStatus = (isConnected: boolean, key: string) => {
     if (lotteries[key].isLoading) {
       return "loading";
     }
-    if (!isConnected) {
+    if (lotteries[key].winner && lotteries[key].winner == wallet.publicKey?.toString() && !lotteries[key].isPaid) {
+      return "receive";
+    }
+    if (!isConnected || lotteries[key].winner || lotteries[key].playersAmount == lotteries[key].playersMaximum || lotteries[key].isPaid) {
       return "disabled";
     }
     if (lotteries[key].isJoined) {
@@ -259,7 +293,7 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
           </Box>
         </Box>
         {Object.entries(lotteries).map(
-          ([publicKey, { name, playersAmount, playersMaximum }], i) => (
+          ([publicKey, { name, playersAmount, playersMaximum, winner }], i) => (
             <Game
               key={i}
               mb={3}
@@ -268,8 +302,10 @@ const HomePage: NextPage<IProps> = ({ publicKeys }) => {
               name={name}
               amount={playersAmount}
               maximum={playersMaximum}
+              winner={winner}
               onJoin={onJoin}
               onLeave={onLeave}
+              onReceive={onReceive}
             />
           )
         )}

@@ -10,7 +10,9 @@ pub mod lottery {
     pub fn initialize_lottery(ctx: Context<Initialize>, players_maximum: u32, ticket_price: u64, oracle_pubkey: Pubkey) -> Result<()> {
         let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;        
         lottery.authority = ctx.accounts.admin.key();                
-        lottery.players_amount = 0;           
+        lottery.players_amount = 0;  
+        lottery.is_finished = false; 
+        lottery.is_paid = false;           
         lottery.players_maximum = players_maximum;
         lottery.oracle = oracle_pubkey;
         lottery.ticket_price = ticket_price;
@@ -69,7 +71,15 @@ pub mod lottery {
         let random_number =  u64::try_from_slice(&hash(&(ctx.accounts.clock.unix_timestamp as i128 + ctx.accounts.clock.slot as i128).to_be_bytes()).to_bytes()[0..8]).unwrap();
         let winner: u32 = (random_number % lottery.players_amount as u64) as u32;
         lottery.winner_index = winner;
+        lottery.is_finished = true;
 
+        Ok(())
+    }
+
+    pub fn set_winner(ctx: Context<SetWinner>) -> Result<()> {
+        let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;
+        let ticket: &mut Account<Ticket> = &mut ctx.accounts.ticket;                
+        lottery.winner = ticket.submitter;
         Ok(())
     }
         
@@ -81,7 +91,7 @@ pub mod lottery {
 
         // Get total money stored under original lottery account
         let balance: u64 = lottery.to_account_info().lamports();                      
-            
+        lottery.is_paid = true;
         **lottery.to_account_info().try_borrow_mut_lamports()? -= balance;
         **recipient.to_account_info().try_borrow_mut_lamports()? += balance; 
         
@@ -115,7 +125,7 @@ pub mod lottery {
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    #[account(init, payer = admin, space = 8 + 180)]
+    #[account(init, payer = admin, space = 1000)]
     // , constraint = lottery.to_account_info().lamports == *lottery.players_maximum*2
     pub lottery: Account<'info, Lottery>,
     #[account(mut)]
@@ -152,11 +162,19 @@ pub struct Winner<'info> {
 }
 
 #[derive(Accounts)]
+pub struct SetWinner<'info> {    
+    #[account(mut, constraint = lottery.winner_index == ticket.idx && lottery.is_finished == true)]
+    pub lottery: Account<'info, Lottery>,        
+    pub ticket: Account<'info, Ticket>,
+}
+
+#[derive(Accounts)]
 pub struct Payout<'info> {             
     #[account(mut, 
         constraint = 
         ticket.submitter == *winner.key && 
-        ticket.idx == lottery.winner_index
+        ticket.idx == lottery.winner_index &&
+        lottery.is_paid == false
     )]       
     pub lottery: Account<'info, Lottery>,          // To assert winner and withdraw lamports
     #[account(mut)]
@@ -184,6 +202,8 @@ pub struct Leave<'info> {
 
 #[account]
 pub struct Lottery {    
+    pub is_finished: bool,
+    pub is_paid: bool,
     pub authority: Pubkey, 
     pub oracle: Pubkey, 
     pub winner: Pubkey,

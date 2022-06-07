@@ -2,13 +2,15 @@ import { Box, BoxProps, Button, Spinner } from "@chakra-ui/react";
 import { FC } from "react";
 
 interface IProps {
-  buttonStatus?: "join" | "disabled" | "leave" | "loading";
+  buttonStatus?: "join" | "disabled" | "leave" | "loading" | "receive";
   amount: number;
   maximum: number;
   name?: string;
   publicKey: string;
+  winner?: string;
   onJoin: (pk: string) => void;
   onLeave: (pk: string) => void;
+  onReceive: (pk: string) => void;
 }
 
 const Game: FC<IProps & BoxProps> = ({
@@ -17,8 +19,10 @@ const Game: FC<IProps & BoxProps> = ({
   name,
   maximum,
   publicKey,
+  winner,
   onJoin,
   onLeave,
+  onReceive,
   ...rest
 }) => {
   const getButton = () => {
@@ -47,13 +51,20 @@ const Game: FC<IProps & BoxProps> = ({
             <Spinner />
           </Button>
         );
+      case "receive":
+        return (
+          <Button mb="1" onClick={() => onReceive(publicKey)} {...buttonStyle}>
+            Receive
+          </Button>
+        );
     }
   };
 
   return (
     <Box {...rest} {...gameWrapperStyle}>
       <Box {...gameStyle}>
-        <Box fontSize="2xl">{name}</Box>
+        <Box fontSize="2xl">{name} {winner ? (<Box fontWeight="bold">Finished</Box>) : null}</Box>
+        {winner ? (<Box>{winner}</Box>) : null}
         <Box
           display="flex"
           flexDirection="column"

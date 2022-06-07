@@ -3,7 +3,7 @@ const fs = require('fs');
 const { AnchorProvider, Program } = require("@project-serum/anchor");
 const { Keypair, Connection, PublicKey } = require("@solana/web3.js");
 const { SystemProgram } = anchor.web3;
-
+const LAMPORTS_PER_SOL = 1000000000;
 const fromJsonToKeypair = (keypair) => {
   const arr = Object.values(keypair._keypair.secretKey);
   const secret = new Uint8Array(arr);
@@ -25,10 +25,10 @@ const idl = JSON.parse(fs.readFileSync(`idl.json`, 'utf8'));
 const program = new Program(idl, programId, provider);
 
 const init = async (maxUsers) => {
-    const oracle = JSON.parse(fs.readFileSync(`oracle.json`, 'utf8'));
+    const oracle = fromJsonToKeypair(JSON.parse(fs.readFileSync(`oracle.json`, 'utf8')));
     const lottery = anchor.web3.Keypair.generate();
     await program.methods
-    .initializeLottery(new anchor.BN(maxUsers), oracle.publicKey)
+    .initializeLottery(new anchor.BN(maxUsers), new anchor.BN(3 * LAMPORTS_PER_SOL), oracle.publicKey)
     .accounts({
       lottery: lottery.publicKey,
       admin: admin.publicKey,
@@ -40,4 +40,4 @@ const init = async (maxUsers) => {
     fs.writeFileSync(`./lottery${maxUsers}.json`, JSON.stringify(lottery));
 }
 
-init(3);
+init(2);

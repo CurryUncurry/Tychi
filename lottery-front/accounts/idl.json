@@ -27,6 +27,10 @@
           "type": "u32"
         },
         {
+          "name": "ticketPrice",
+          "type": "u64"
+        },
+        {
           "name": "oraclePubkey",
           "type": "publicKey"
         }
@@ -70,14 +74,30 @@
           "name": "oracle",
           "isMut": false,
           "isSigner": true
+        },
+        {
+          "name": "clock",
+          "isMut": false,
+          "isSigner": false
         }
       ],
-      "args": [
+      "args": []
+    },
+    {
+      "name": "setWinner",
+      "accounts": [
         {
-          "name": "winner",
-          "type": "u32"
+          "name": "lottery",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ticket",
+          "isMut": false,
+          "isSigner": false
         }
-      ]
+      ],
+      "args": []
     },
     {
       "name": "payOutWinner",
@@ -116,7 +136,7 @@
         {
           "name": "player",
           "isMut": true,
-          "isSigner": true
+          "isSigner": false
         }
       ],
       "args": []
@@ -128,6 +148,14 @@
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "isFinished",
+            "type": "bool"
+          },
+          {
+            "name": "isPaid",
+            "type": "bool"
+          },
           {
             "name": "authority",
             "type": "publicKey"
@@ -151,6 +179,10 @@
           {
             "name": "playersMaximum",
             "type": "u32"
+          },
+          {
+            "name": "ticketPrice",
+            "type": "u64"
           }
         ]
       }
