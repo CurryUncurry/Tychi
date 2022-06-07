@@ -275,8 +275,6 @@ describe("lottery", () => {
     expect(startBalance).to.be.lessThan(endBalance);
   });
   it("Oracle picks winner", async () => {
-    let winnerIndex: number = 1;
-
     // Get oracle picks winner index
     await program.methods
       .pickWinner()
