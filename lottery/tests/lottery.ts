@@ -15,7 +15,8 @@ describe("lottery", () => {
   const player2 = anchor.web3.Keypair.generate();
   const player3 = anchor.web3.Keypair.generate();
   const player4 = anchor.web3.Keypair.generate();
-  const players = [player1, player2, player3, player4];
+  const insufficientMoneyPlayer = anchor.web3.Keypair.generate();
+  const players = [player1, player2, player3, player4, insufficientMoneyPlayer];
 
   const oracle = anchor.web3.Keypair.generate();
 
@@ -37,32 +38,38 @@ describe("lottery", () => {
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
         players[0].publicKey,
-        LAMPORTS_PER_SOL
+        5 * LAMPORTS_PER_SOL
       )
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
         players[1].publicKey,
-        LAMPORTS_PER_SOL
+        5 * LAMPORTS_PER_SOL
       )
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
         players[2].publicKey,
-        LAMPORTS_PER_SOL
+        5 * LAMPORTS_PER_SOL
       )
     );
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(
         players[3].publicKey,
-        LAMPORTS_PER_SOL
+        5 * LAMPORTS_PER_SOL
+      )
+    );
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(
+        players[4].publicKey,
+        2 * LAMPORTS_PER_SOL
       )
     );
   });
 
   it("Creates a lottery account", async () => {
     await program.methods
-      .initializeLottery(new anchor.BN(3), oracle.publicKey)
+      .initializeLottery(new anchor.BN(3), new anchor.BN(3 * LAMPORTS_PER_SOL), oracle.publicKey)
       .accounts({
         lottery: lottery.publicKey,
         admin: lottery_admin.publicKey,
@@ -82,6 +89,9 @@ describe("lottery", () => {
   });
 
   it("Player 1 joins the game", async () => {
+    let startBalance: number = await provider.connection.getBalance(
+        players[0].publicKey
+    );
     const idx: number = (await program.account.lottery.fetch(lottery.publicKey))
       .playersAmount;
     const buf = Buffer.alloc(4);
@@ -109,6 +119,38 @@ describe("lottery", () => {
       players[0].publicKey.toString()
     );
     expect(ticketState.isActive).to.be.true;
+    let endBalanace = await provider.connection.getBalance(players[0].publicKey);
+    expect(endBalanace).to.be.lessThan(startBalance);
+  });
+
+  it("Player 5 unable to join the lottery because of insufficient funds", async () => {
+    let idx: number = (await program.account.lottery.fetch(lottery.publicKey))
+        .playersAmount;
+    const buf = Buffer.alloc(4);
+    buf.writeUIntBE(idx, 0, 4);
+    const [ticket] = await anchor.web3.PublicKey.findProgramAddress(
+        [buf, lottery.publicKey.toBytes()],
+        program.programId
+    );
+    try {
+      await program.methods
+          .join()
+          .accounts({
+            lottery: lottery.publicKey,
+            player: players[4].publicKey,
+            ticket,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([players[4]])
+          .rpc();
+      assert.fail();
+    } catch (e) {
+      expect(e.message).to.be.equal("2003: A raw constraint was violated");
+      const lotteryState = await program.account.lottery.fetch(
+          lottery.publicKey
+      );
+      expect(lotteryState.playersAmount).to.equal(idx);
+    }
   });
 
   it("Player 2 and 3 joins the game", async () => {
@@ -242,13 +284,14 @@ describe("lottery", () => {
     expect(lotteryState.winnerIndex).to.be.greaterThanOrEqual(0);
   });
   it("Winner withdraws funds", async () => {
-    let startBalance: number = await provider.connection.getBalance(
-      players[1].publicKey
-    );
     // Get winner idx
     const winnerIdx: number = (
-      await program.account.lottery.fetch(lottery.publicKey)
+        await program.account.lottery.fetch(lottery.publicKey)
     ).winnerIndex;
+
+    let startBalance: number = await provider.connection.getBalance(
+      players[winnerIdx].publicKey
+    );
 
     const buf = Buffer.alloc(4);
     buf.writeUIntBE(winnerIdx, 0, 4);

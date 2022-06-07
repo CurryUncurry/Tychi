@@ -7,18 +7,18 @@ declare_id!("GaYLemFsWLURxRTLHhS735SdfYBuV3v2aJshrrTmvsmU");
 pub mod lottery {
     use super::*;
 
-    pub fn initialize_lottery(ctx: Context<Initialize>, players_maximum: u32, oracle_pubkey: Pubkey) -> Result<()> {
+    pub fn initialize_lottery(ctx: Context<Initialize>, players_maximum: u32, ticket_price: u64, oracle_pubkey: Pubkey) -> Result<()> {
         let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;        
         lottery.authority = ctx.accounts.admin.key();                
         lottery.players_amount = 0;           
         lottery.players_maximum = players_maximum;
         lottery.oracle = oracle_pubkey;
+        lottery.ticket_price = ticket_price;
 
         Ok(())
     }
 
     pub fn join(ctx: Context<Join>) -> Result<()> {
-        
         // Deserialise lottery account
         let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;
         
@@ -26,21 +26,22 @@ pub mod lottery {
             return Err(SErrors::LobbyIsFull.into());
         }
 
-        // let player: &mut Signer = &mut ctx.accounts.player;                 
+        let player: &mut Signer = &mut ctx.accounts.player;
 
+        // player.to_account_info().lamports();
         // Transfer lamports to the lottery account
-        // let ix = anchor_lang::solana_program::system_instruction::transfer(
-        //     &player.key(),
-        //     &lottery.key(),
-        //     lottery.ticket_price,
-        // );
-        // anchor_lang::solana_program::program::invoke(
-        //     &ix,
-        //     &[
-        //         player.to_account_info(),
-        //         lottery.to_account_info(),
-        //     ],
-        // )?;
+        let ix = anchor_lang::solana_program::system_instruction::transfer(
+            &player.key(),
+            &lottery.key(),
+            lottery.ticket_price,
+        );
+        anchor_lang::solana_program::program::invoke(
+            &ix,
+            &[
+                player.to_account_info(),
+                lottery.to_account_info(),
+            ],
+        )?;
 
         // Deserialise ticket account
         let ticket: &mut Account<Ticket> = &mut ctx.accounts.ticket;                
@@ -122,7 +123,7 @@ pub struct Join<'info> {
             &lottery.players_amount.to_be_bytes(), 
             lottery.key().as_ref()
         ], 
-        // constraint = player.to_account_info().lamports() >= lottery.ticket_price,
+        constraint = player.to_account_info().lamports() >= lottery.ticket_price,
         bump, 
         payer = player, 
         space=80
@@ -181,6 +182,7 @@ pub struct Lottery {
     pub winner_index: u32, 
     pub players_amount: u32,
     pub players_maximum: u32,
+    pub ticket_price: u64,
 }
 
 #[account]
