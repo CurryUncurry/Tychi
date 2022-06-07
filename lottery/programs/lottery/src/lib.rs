@@ -91,6 +91,13 @@ pub mod lottery {
 
     pub fn leave(ctx: Context<Leave>) -> Result<()> {
         let lottery: &mut Account<Lottery> = &mut ctx.accounts.lottery;
+        let recipient: &mut AccountInfo =  &mut ctx.accounts.player;
+
+        // Get total money stored under original lottery account
+        let balance: u64 = lottery.ticket_price;
+
+        **lottery.to_account_info().try_borrow_mut_lamports()? -= balance;
+        **recipient.to_account_info().try_borrow_mut_lamports()? += balance;
         // if lottery.winner == None {
         //     return Err(SErrors::GameFinished.into());
         // }
@@ -169,8 +176,9 @@ pub struct Leave<'info> {
         ticket.submitter == *player.key
     )]                  
     pub ticket: Account<'info, Ticket>,
-    #[account(mut)]                                 
-    pub player: Signer<'info>,
+    #[account(mut)]
+    /// CHECK:
+    pub player: AccountInfo<'info>,
 }
 
 

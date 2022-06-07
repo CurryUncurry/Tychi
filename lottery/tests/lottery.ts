@@ -245,6 +245,11 @@ describe("lottery", () => {
     const idx = 2;
     const buf = Buffer.alloc(4);
     buf.writeUIntBE(idx, 0, 4);
+
+    let startBalance: number = await provider.connection.getBalance(
+        players[2].publicKey
+    );
+
     const [ticket] = await anchor.web3.PublicKey.findProgramAddress(
       [buf, lottery.publicKey.toBytes()],
       program.programId
@@ -256,13 +261,18 @@ describe("lottery", () => {
         player: players[2].publicKey,
         ticket,
       })
-      .signers([players[2]])
+      .signers([])
       .rpc();
+
+    let endBalance: number = await provider.connection.getBalance(
+        players[2].publicKey
+    );
 
     const lotteryState = await program.account.lottery.fetch(lottery.publicKey);
     expect(lotteryState.playersAmount).to.equal(idx);
     const ticketState = await program.account.ticket.fetch(ticket);
     expect(ticketState.isActive).to.be.false;
+    expect(startBalance).to.be.lessThan(endBalance);
   });
   it("Oracle picks winner", async () => {
     let winnerIndex: number = 1;
