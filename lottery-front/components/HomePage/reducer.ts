@@ -1,4 +1,5 @@
 import { Idl, Program } from "@project-serum/anchor";
+import { PublicKey } from "@solana/web3.js";
 
 export enum Actions {
   SetProgram,
@@ -20,6 +21,8 @@ interface IState {
       playersMaximum: number;
       isJoined: boolean;
       isLoading: boolean;
+      winner?: string;
+      isPaid: boolean;
     };
   };
 }
@@ -32,7 +35,8 @@ export const reducer = (
     case Actions.SetProgram:
       return { ...state, program: payload };
     case Actions.AddLottery: {
-      const { playersAmount, playersMaximum, name, publicKey } = payload;
+      const { playersAmount, playersMaximum, name, publicKey, winner, isPaid } = payload;
+      const winnerPk = new PublicKey(winner);
       const { lotteries } = { ...state };
       lotteries[publicKey] = {
         playersAmount,
@@ -40,6 +44,8 @@ export const reducer = (
         name,
         isJoined: false,
         isLoading: false,
+        isPaid,
+        winner: winnerPk.toString() !== "11111111111111111111111111111111" ? winnerPk.toString() : undefined
       };
       return { ...state, lotteries };
     }
